@@ -51,7 +51,7 @@ version() {
 # --- Globals and cleanup ---
 
 SCRIPT="$(basename "${BASH_SOURCE[0]}" )"
-VERSION=1.0
+VERSION=1.1
 START_MARKER=
 END_MARKER=
 INPUT_FILE=
@@ -126,7 +126,7 @@ get_start_line() {
     if is_int "${start_marker}"; then
         sline=${start_marker}
     elif [ "${start_marker}" != "-" ] ; then
-        sline=$("${GREP_CMD[@]}" -m 1 -n "${start_marker}" <(echo "${INPUT_CONTENT}")|cut -d: -f1) || { echo "start marker '${start_marker}' not found in file" && exit 1; }
+        sline=$("${GREP_CMD[@]}" -m 1 -n -e "${start_marker}" <(echo "${INPUT_CONTENT}")|cut -d: -f1) || { echo "start marker '${start_marker}' not found in file" && exit 1; }
     else
         sline=1
     fi
@@ -142,7 +142,7 @@ get_end_line() {
     if is_int "${end_marker}"; then
         eline=end_marker
     elif [ "${end_marker}" != "-" ] ; then
-        eline=$("${GREP_CMD[@]}" -m 1 -n "${end_marker}" <(echo "${INPUT_CONTENT}"|tail -n+${start_line})|cut -d: -f1)  || { echo "end marker '${end_marker}' not found in file" && exit 1; }
+        eline=$("${GREP_CMD[@]}" -m 1 -n -e "${end_marker}" <(echo "${INPUT_CONTENT}"|tail -n+${start_line})|cut -d: -f1)  || { echo "end marker '${end_marker}' not found in file" && exit 1; }
         ((eline+=${start_line}-1))
     else
         eline=$(wc -l <(echo "${INPUT_CONTENT}")|cut -s -d " " -f1)

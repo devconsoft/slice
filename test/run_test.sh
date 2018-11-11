@@ -154,6 +154,14 @@ test_same_marker() {
     etest
 }
 
+test_regex_match() {
+    stest "markers can be regular expressions"
+    local expected_output; expected_output=$(<data/regexb.txt)
+    local cmd="${SLICE} '[a-z]* b [a-z]* 1' '[a-z]* b [a-z]* 2' data/regex.txt"
+    assert_equal_output_expr "${expected_output}" "${cmd}"
+    etest
+}
+
 test_help
 test_version
 test_catch_invalid_file
@@ -169,3 +177,4 @@ test_before_context
 test_after_context
 test_first_end_marker_after_start
 test_same_marker
+test_regex_match
