@@ -1,0 +1,191 @@
+#!/bin/bash
+#
+# (C) DevConSoft 2018
+# Author: Per Böhlin
+#
+# Source: https://github.com/devconsoft/slice
+#
+
+set -o errexit -o nounset -o pipefail
+
+# --- Usage and version ---
+
+usage() {
+    cat <<EOF
+Usage:
+    $SCRIPT -h|--help
+    $SCRIPT --version
+    $SCRIPT [-a|--text] [-n|--line-number] START_MARKER END_MARKER [FILE]
+
+START_MARKER and END_MARKER is either a grep regular expression, or a line-number
+prefixed with dash(-). A standalone dash(-) indicates beginning/end of file.
+
+if FILE is omitted, content is read from stdin.
+
+Options:
+    -h, --help                  output this small usage guide and exit
+    --version                   output version information and exit
+    -a, --text                  force text mode
+    -n, --line-number           print line number with output lines
+    -B, --before-context=NUM    print NUM lines of leading context
+    -A, --after-context=NUM     print NUM lines of trailing context
+    -C, --context=NUM           print NUM lines of output context
+
+Examples:
+    \$ $SCRIPT -2 foo file.txt
+    Slice the file file.txt starting on line 2 ending with first occurrance
+    after line 2 of a line matching 'foo' .
+
+    \$ expression | $SCRIPT -n -B 1 -A 2 a z
+    Slice the input from stdin. First line shown will be 1 line before
+    first line that matches 'a'; ending 2 lines after first
+    occurance of 'z', and print line numbers.
+EOF
+}
+
+version() {
+    echo "$SCRIPT -- version $VERSION"
+    echo "Copyright DevConSoft, 2018"
+}
+
+# --- Globals and cleanup ---
+
+SCRIPT="$(basename "${BASH_SOURCE[0]}" )"
+VERSION=1.0
+START_MARKER=
+END_MARKER=
+INPUT_FILE=
+INPUT_CONTENT=
+PRINT_LINE_NUMBER=false
+BEFORE_CONTEXT=0
+AFTER_CONTEXT=0
+declare -a GREP_CMD=(grep)
+
+# --- Commandline parsing ---
+if ! ARGS=$(getopt -o hanB:A:C: -l "help,version,line-number,before-context,after-context,context" -n "$SCRIPT" -- "$@"); then
+    echo "$@"
+    usage
+    exit 2
+fi
+
+eval set -- "$ARGS";
+
+while true; do
+    case $1 in
+        -h|--help)
+            shift;
+            usage
+            exit 0;
+            ;;
+        --version)
+            shift;
+            version;
+            exit 0;
+            ;;
+        -a|--text)
+            shift;
+            GREP_CMD+=('--text')
+            ;;
+        -n|--line-number)
+            shift;
+            PRINT_LINE_NUMBER=true
+            ;;
+        -A|--after-context)
+            AFTER_CONTEXT=$2;
+            shift 2;
+            ;;
+        -B|--before-context)
+            BEFORE_CONTEXT=$2;
+            shift 2;
+            ;;
+        -C|--context)
+            BEFORE_CONTEXT=$2;
+            AFTER_CONTEXT=$2;
+            shift 2;
+            ;;
+        --)
+            shift;
+            break;
+            ;;
+    esac
+done
+
+# --- Functions ---
+is_int() {
+    if [ $1 -eq $1 ] 2>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# $1 start marker
+get_start_line() {
+    local start_marker=$1
+
+    if is_int "${start_marker}"; then
+        sline=${start_marker}
+    elif [ "${start_marker}" != "-" ] ; then
+        sline=$("${GREP_CMD[@]}" -m 1 -n "${start_marker}" <(echo "${INPUT_CONTENT}")|cut -d: -f1) || { echo "start marker '${start_marker}' not found in file" && exit 1; }
+    else
+        sline=1
+    fi
+    echo "${sline}"
+}
+
+# $1 end marker
+# $2 start line
+get_end_line() {
+    local end_marker="$1"
+    local start_line="$2"
+
+    if is_int "${end_marker}"; then
+        eline=end_marker
+    elif [ "${end_marker}" != "-" ] ; then
+        eline=$("${GREP_CMD[@]}" -m 1 -n "${end_marker}" <(echo "${INPUT_CONTENT}"|tail -n+${start_line})|cut -d: -f1)  || { echo "end marker '${end_marker}' not found in file" && exit 1; }
+        ((eline+=${start_line}-1))
+    else
+        eline=$(wc -l <(echo "${INPUT_CONTENT}")|cut -s -d " " -f1)
+    fi
+    echo "${eline}"
+}
+
+slice() {
+    local start_marker="$1"
+    local end_marker="$2"
+    local sline
+    local eline
+
+    sline="$(get_start_line "${start_marker}")"
+    eline="$(get_end_line "${end_marker}" "${sline}")"
+
+    ((sline-=${BEFORE_CONTEXT}))
+    ((eline++))
+    ((eline+=${AFTER_CONTEXT}))
+    linediff="$((eline-sline))"
+    if $PRINT_LINE_NUMBER; then
+        cat -n <(echo "${INPUT_CONTENT}") | tail -n+${sline} |head -n${linediff}
+    else
+        tail -n+${sline} <(echo "${INPUT_CONTENT}")|head -n${linediff}
+    fi
+}
+
+# --- Execution ---
+
+START_MARKER="$1"
+END_MARKER="$2"
+INPUT_FILE="${3:-}"
+
+if [ -n "${INPUT_FILE}" ] && [ ! -f "${INPUT_FILE}" ]; then
+    echo "Input file '${INPUT_FILE}' does not exist."
+    exit 4
+fi
+
+if [ -n "${INPUT_FILE}" ]; then
+    INPUT_CONTENT=$(<"${INPUT_FILE}")
+else
+    INPUT_CONTENT=$(</dev/stdin)
+fi
+
+
+slice "${START_MARKER}" "${END_MARKER}"
